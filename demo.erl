@@ -1,5 +1,5 @@
 -module(demo).
--export([run/0, feed/2]).
+-export([run/0, feed/2, dump/1]).
 
 % 1.1
 run() ->
@@ -15,31 +15,29 @@ run() ->
         bench(contract, run, 100), % 17
         bench_stats(contract, run, [100], 1000),
         % 1.5
-        spawn(demo, feed, [self(),[C1, C2, C3, C4, C5]]),
-        loop([C1, C2, C3, C4, C5]),
+        spawn(demo, feed, 
+                [self(),#{1=>C1, 2=>C2, 3=>C3, 4=>C4, 5=>C5}]),
+        receive shutdown -> ok end,
         io:fwrite("demo end.\n").
-
-loop(S) ->
-        receive 
-                shutdown -> ok
-                after 1000 -> dump(S), loop(S) end.
 
 % 18
 % for demo this substitutes for agency of receivers
-feed(P,Peers=[C1,C2,_,_,_]) ->
-        timer:sleep(200), C1 ! { whitelist, Peers},
+feed(P,Peers=#{1:=C1, 2:=C2, 3:=C3, 4:=C4}) ->
+        timer:sleep(200), broadcast(Peers, {demo_peers, Peers}),
+        timer:sleep(200), C2 ! {demo_peers, #{3=>C3,4=>C4}}, % demo: incomplete
         timer:sleep(200), C1 ! { event, "event x"},
-        timer:sleep(200), C1 ! demo_commit,
-        timer:sleep(200), C1 ! demo_propose,
-        timer:sleep(200), C1 ! demo_upgrade,
         timer:sleep(200), C1 ! demo_request,
         timer:sleep(200), C1 ! demo_broadcast,
-        timer:sleep(200), C1 ! { contract, C2, contract, [] },
-        %Aareceive after 200 -> All ! { cde, 1 } end,
-        %receive after 200 -> All ! { annul, 1 } end,
-        timer:sleep(200), C1 ! { test, 99 },
-        timer:sleep(200), C1 ! { aggregate },
+        timer:sleep(200), C1 ! demo_commit,
+        timer:sleep(200), broadcast(Peers, demo_propose),
+        timer:sleep(200), broadcast(Peers, demo_choose),
+        timer:sleep(400), C1 ! demo_upgrade,
+        timer:sleep(200), C1 ! demo_pong,
+        timer:sleep(200), broadcast(Peers, demo_shutdown),
         timer:sleep(200), P ! shutdown. % 1.7
+
+broadcast(Clients, Msg) ->
+        [Client ! Msg || {_,Client} <- maps:to_list(Clients)].
 
 bench(M,F,A) ->
         _ = M:F(A),
